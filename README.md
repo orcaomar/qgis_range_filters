@@ -5,4 +5,4 @@ Please note, this only works from the Python Console in QGIS. Tested in QGIS 3.6
 
 You can see this in action here: https://www.youtube.com/watch?v=0FapVK6dpC8&feature=youtu.be
 
-I plan to turn this into an actual one day.. 
+I plan to turn this into an actual widget one day soon. 
