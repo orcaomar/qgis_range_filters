@@ -137,8 +137,9 @@ class RangeFilterWidgetProvider(QgsLayerTreeEmbeddedWidgetProvider):
         return DataLayerRangeFilterWidget(layer)
 
     def supportsLayer(self, layer):
+        return hasattr(layer.dataProvider(), "fields")
         # TODO: this definitely doesn't work for all layers. What does it mean for maps layers for example?
-        return True
+        #return True
 
 
 provider = RangeFilterWidgetProvider()
