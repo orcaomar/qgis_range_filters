@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/legend_data_filter" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>

@@ -5,13 +5,18 @@
 #   code from https://github.com/qgis/QGIS/pull/3170
 #
 # This is a work in progress. There are many things still to improve. 
+# TODO: save settings
+# vlayer.setCustomProperty("mytext", "hello world")
+# read the value again (returning "default text" if not found)
+# mytext = vlayer.customProperty("mytext", "default text")
 
-from qgis.PyQt.QtWidgets import QComboBox,QMenu
 
+from qgis.PyQt.QtWidgets import *
+from qgis.PyQt import QtCore
 from qgis.core import QgsMessageLog, QgsAggregateCalculator
 from qgis.core import QgsMapLayer, QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
 from qgis.gui import QgsLayerTreeEmbeddedWidgetProvider, QgsLayerTreeEmbeddedWidgetRegistry
-from qrangeslider import QRangeSlider
+from .qrangeslider import QRangeSlider
 
 class RangeSlider(QWidget):
     def __init__(self, parent, field_name, fmin, fmax):
@@ -137,10 +142,9 @@ class RangeFilterWidgetProvider(QgsLayerTreeEmbeddedWidgetProvider):
         return DataLayerRangeFilterWidget(layer)
 
     def supportsLayer(self, layer):
+        # TODO: this is necc. but is it sufficient?
         return hasattr(layer.dataProvider(), "fields")
-        # TODO: this definitely doesn't work for all layers. What does it mean for maps layers for example?
-        #return True
+        
 
-
-provider = RangeFilterWidgetProvider()
-QgsGui.layerTreeEmbeddedWidgetRegistry().addProvider(provider)
+#provider = RangeFilterWidgetProvider()
+#QgsGui.layerTreeEmbeddedWidgetRegistry().addProvider(provider)
