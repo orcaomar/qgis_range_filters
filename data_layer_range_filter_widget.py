@@ -9,7 +9,11 @@
 # vlayer.setCustomProperty("mytext", "hello world")
 # read the value again (returning "default text" if not found)
 # mytext = vlayer.customProperty("mytext", "default text")
+# TODO: logging 
+#        QgsMessageLog.logMessage("calling set parent! %s" % str(parent), tag="Plugins", level=QgsMessageLog.INFO )
 
+
+WIDGET_SETTING_PREFIX = "legend_data_filter_%s"
 
 from qgis.PyQt.QtWidgets import *
 from qgis.PyQt import QtCore
@@ -85,7 +89,7 @@ class RangeSlider(QWidget):
         (start_actual_val, end_actual_val) = self._getStartEndValues()
         self.parent.on_slider_changed(self)
         
-
+SLIDER_LIST_CONFIG_NAME = "!!SLIDERS!!"
 class DataLayerRangeFilterWidget(QWidget):
 
     def __init__(self, layer):
@@ -94,24 +98,42 @@ class DataLayerRangeFilterWidget(QWidget):
         self.setLayout(layout)
         self.layer = layer
         self.sliders = []
+        self.layout = layout
         
         db = self.layer.dataProvider()
         # TURN OFF ALL FILTERING prior to analyzing the data
         # TODO: take whatever filter already exists on the data now and make sure those are
         # honoured. 
         db.setSubsetString("")
-        for field in db.fields():
-            if field.isNumeric():
-                field_name = field.name()
-                field_max = self.layer.aggregate(QgsAggregateCalculator.Max, field.name())[0]
-                field_min = self.layer.aggregate(QgsAggregateCalculator.Min, field.name())[0]
+     
+        slider_names = self.layer.customProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, None)
+        if slider_names is not None:
+            slider_names = slider_names.split("###")
+            for name in slider_names:
+                self._add_slider(name)
+        else:
+            for field in db.fields():
+                self._add_slider(field.name())
+
+        self._save_sliders()
+        
+    def _save_sliders(self):
+        slider_names = [slider.field_name for slider in self.sliders]
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, "###".join(slider_names))
+    
+    def _add_slider(self, field_name):
+        db = self.layer.dataProvider()
+        i = db.fieldNameIndex(field_name)
+        if i != -1:
+          field = db.fields()[i]
+          if field.isNumeric():
+              field_max = self.layer.aggregate(QgsAggregateCalculator.Max, field.name())[0]
+              field_min = self.layer.aggregate(QgsAggregateCalculator.Min, field.name())[0]
                 
-                slider = RangeSlider(self, field_name, field_min, field_max)
-                layout.addWidget(slider)
-                self.sliders.append(slider)        
-        
-        self.layout = layout
-        
+              slider = RangeSlider(self, field_name, field_min, field_max)
+              self.layout.addWidget(slider)
+              self.sliders.append(slider)        
+              #self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % field_name, "1")
         
     def on_slider_changed(self, the_slider):
         text = " AND ".join(map(RangeSlider.getRangeFilter,  self.sliders))
@@ -121,6 +143,7 @@ class DataLayerRangeFilterWidget(QWidget):
     def on_remove_slider(self, slider):
         self.sliders.remove(slider)
         self.layout.removeWidget(slider)
+        self._save_sliders()
         slider.setParent(None)
         # TODO: this doesn't cause the container for the widget to resize, which is what I was hoping for
         #self.parent().resize(self.parent().width(), self.parent().height() - 50)
