@@ -9,21 +9,23 @@
 # vlayer.setCustomProperty("mytext", "hello world")
 # read the value again (returning "default text" if not found)
 # mytext = vlayer.customProperty("mytext", "default text")
-# TODO: logging 
-#        QgsMessageLog.logMessage("calling set parent! %s" % str(parent), tag="Plugins", level=QgsMessageLog.INFO )
 
 
 WIDGET_SETTING_PREFIX = "legend_data_filter_%s"
 
 from qgis.PyQt.QtWidgets import *
 from qgis.PyQt import QtCore
-from qgis.core import QgsMessageLog, QgsAggregateCalculator
+from qgis.core import QgsMessageLog, QgsAggregateCalculator, Qgis
 from qgis.core import QgsMapLayer, QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
 from qgis.gui import QgsLayerTreeEmbeddedWidgetProvider, QgsLayerTreeEmbeddedWidgetRegistry
 from .qrangeslider import QRangeSlider
 
+import numbers
+
 class RangeSlider(QWidget):
     def __init__(self, parent, field_name, fmin, fmax):
+        if not isinstance(fmin, numbers.Number) or not isinstance(fmax, numbers.Number):
+          raise ValueError("Min or Max is not a number") 
         QWidget.__init__(self)
         self.parent = parent
         self.field_name = field_name
@@ -94,6 +96,8 @@ class DataLayerRangeFilterWidget(QWidget):
 
     def __init__(self, layer):
         QWidget.__init__(self)
+        #QgsMessageLog.logMessage("Widget Loaded", 'Range Filter Plugin', level=Qgis.Info)        
+        
         layout = QVBoxLayout()
         self.setLayout(layout)
         self.layer = layer
@@ -130,9 +134,13 @@ class DataLayerRangeFilterWidget(QWidget):
               field_max = self.layer.aggregate(QgsAggregateCalculator.Max, field.name())[0]
               field_min = self.layer.aggregate(QgsAggregateCalculator.Min, field.name())[0]
                 
-              slider = RangeSlider(self, field_name, field_min, field_max)
-              self.layout.addWidget(slider)
-              self.sliders.append(slider)        
+              try:
+                slider = RangeSlider(self, field_name, field_min, field_max)
+                self.layout.addWidget(slider)
+                self.sliders.append(slider)        
+              except ValueError as v:
+                QgsMessageLog.logMessage("Error for fieldname %s: %s" % (field_name, str(v)), 'Range Filter Plugin', level=Qgis.Warning)        
+                
               #self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % field_name, "1")
         
     def on_slider_changed(self, the_slider):
