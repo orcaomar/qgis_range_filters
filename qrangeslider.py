@@ -35,6 +35,7 @@
 # Copyright (c) 2019, Omar Khan
 # NOTE from Omar Khan: this new slider now works with PyQt5 but has some specific
 # settings (like font size, how text is printed) that make it quite custom
+# TODO: There is a hack in here to get the width right. See below
 
 __author__ = "Omar Khan"
 __version__ = "0.1.2"
@@ -57,6 +58,7 @@ from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import uic
 from PyQt5.QtWidgets import QGroupBox, QWidget, QGridLayout, QSplitter, QHBoxLayout, QApplication
+from qgis.core import QgsMessageLog,  Qgis
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -64,6 +66,8 @@ except AttributeError:
     _fromUtf8 = lambda s: s
 
 __all__ = ['QRangeSlider']
+
+HANDLE_BORDER_WIDTH = 2
 
 DEFAULT_CSS = """
 QRangeSlider * {
@@ -85,11 +89,11 @@ QRangeSlider #Tail {
 
 QRangeSlider > QSplitter::handle {
     background: #FFFFFF;
-    border: 1px solid #777;
-    width: 13px;
-    margin-top: 2px;
-    margin-bottom: 2px;
-    border-radius: 4px;
+    border: %dpx solid #777;
+    width: 0px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+    border-radius: 2px;
 }
 QRangeSlider > QSplitter::handle:vertical {
     height: 4px;
@@ -99,6 +103,8 @@ QRangeSlider > QSplitter::handle:pressed {
 }
 
 """
+
+DEFAULT_CSS = DEFAULT_CSS % HANDLE_BORDER_WIDTH
 
 def scale(val, src, dst):
     """
@@ -313,11 +319,7 @@ class QRangeSlider(QWidget, Ui_Form):
         }
         
     """
-    endValueChanged = QtCore.pyqtSignal(int)
-    maxValueChanged = QtCore.pyqtSignal(int)
-    minValueChanged = QtCore.pyqtSignal(int)
-    startValueChanged = QtCore.pyqtSignal(int)
-
+    
     # define splitter indices
     _SPLIT_START = 1
     _SPLIT_END = 2
@@ -345,7 +347,7 @@ class QRangeSlider(QWidget, Ui_Form):
         # head layout
         self._head_layout = QHBoxLayout()
         self._head_layout.setSpacing(0)
-        #self._head_layout.setMargin(0)
+        self._head_layout.setMargin(0)
         self._head_layout.setContentsMargins(0, 0, 0, 0)
         self._head.setLayout(self._head_layout)
         self.head = Head(self._head, main=self)
@@ -354,7 +356,7 @@ class QRangeSlider(QWidget, Ui_Form):
         # handle layout
         self._handle_layout = QHBoxLayout()
         self._handle_layout.setSpacing(0)
-        #self._handle_layout.setMargin(0)
+        self._handle_layout.setMargin(0)
         self._handle_layout.setContentsMargins(0, 0, 0, 0)
         self._handle.setLayout(self._handle_layout)
         self.handle = Handle(self._handle, main=self)
@@ -364,7 +366,7 @@ class QRangeSlider(QWidget, Ui_Form):
         # tail layout
         self._tail_layout = QHBoxLayout()
         self._tail_layout.setSpacing(0)
-        #self._tail_layout.setMargin(0)
+        self._tail_layout.setMargin(0)
         self._tail_layout.setContentsMargins(0, 0, 0, 0)
         self._tail.setLayout(self._tail_layout)
         self.tail = Tail(self._tail, main=self)
@@ -372,9 +374,9 @@ class QRangeSlider(QWidget, Ui_Form):
 
         # defaults
         self.setMin(0)
-        self.setMax(99)
+        self.setMax(100)
         self.setStart(0)
-        self.setEnd(99)
+        self.setEnd(100)
         self.setDrawValues(True)
 
     def min(self):
@@ -477,13 +479,20 @@ class QRangeSlider(QWidget, Ui_Form):
         """sets range span handle style"""
         self._handle.setStyleSheet(style)
 
+    def _mouseActiveAreaWidth(self):
+        """returns the width of the area the mouse can inhabit. TODO: I don't fully understand QT and hence why the house can't touch beyond the border area, but that is what is happening."""
+        
+        # TODO: if I need to do this, I'm sure I can extra the border width from properties or CSS somehow, but can figure that out later. 
+        return self.width() - self._splitter.handleWidth() - 2*HANDLE_BORDER_WIDTH
+        
+
     def _valueToPos(self, value):
         """converts slider value to local pixel x coord"""
-        return scale(value, (self.min(), self.max()), (0, self.width()))
+        return scale(value, (self.min(), self.max()), (0, self._mouseActiveAreaWidth()))
 
     def _posToValue(self, xpos):
         """converts local pixel x coord to slider value"""
-        return scale(xpos, (0, self.width()), (self.min(), self.max()))
+        return scale(xpos, (0, self._mouseActiveAreaWidth()), (self.min(), self.max()))
 
     def _handleMoveSplitter(self, xpos, index):
         """private method for handling moving splitter handles"""
@@ -499,23 +508,22 @@ class QRangeSlider(QWidget, Ui_Form):
             widget.setMaximumWidth(16777215)
         
         v = self._posToValue(xpos)
+        #QgsMessageLog.logMessage("Moving splitter. Xpos %d Value %f Index %d end value: %d total width %d" % (xpos, v, index, self.end(), self._mouseActiveAreaWidth()), 'Range Filter Plugin', level=Qgis.Info)        
         
         if index == self._SPLIT_START:
             _lockWidth(self._tail)
-            if v >= self.end():
+            if v > self.end():
                 return
             
             offset = -20
-            w = xpos + offset
             self._setStart(v)
             
         elif index == self._SPLIT_END:
             _lockWidth(self._head)
-            if v <= self.start():
+            if v < self.start():
                 return
             
             offset = -40
-            w = self.width() - xpos + offset
             self._setEnd(v)
 
         _unlockWidth(self._tail)

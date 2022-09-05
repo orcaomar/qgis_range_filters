@@ -21,6 +21,7 @@ from qgis.gui import QgsLayerTreeEmbeddedWidgetProvider, QgsLayerTreeEmbeddedWid
 from .qrangeslider import QRangeSlider
 
 import numbers
+import math
 
 class RangeSlider(QWidget):
     def __init__(self, parent, field_name, fmin, fmax):
@@ -31,13 +32,17 @@ class RangeSlider(QWidget):
         self.field_name = field_name
         self.fmin = fmin
         self.fmax = fmax
+        self._dirty = False
         self.slider = QRangeSlider()
-        self.slider.setRange(0, 100)
         self.slider.setDrawValues(True, self)
         self.slider.setFixedHeight(16)
         self.slider.startValueChanged.connect(self.on_value_changed)
         self.slider.endValueChanged.connect(self.on_value_changed)
-        self.on_value_changed()
+        
+        QgsMessageLog.logMessage("Creating Range Slider for field %s" % self.field_name, 'Range Filter Plugin', level=Qgis.Info)        
+        
+        
+        #self.on_value_changed()
         
         layout = QHBoxLayout()
         label = QLabel(field_name)
@@ -51,16 +56,30 @@ class RangeSlider(QWidget):
         self.installEventFilter(self)
     
     def pretty(self, slider_num):
-        num = (slider_num/100.0) * (self.fmax - self.fmin) + self.fmin
+        num = (float(slider_num)/self.slider.max()) * (self.fmax - self.fmin) + self.fmin
         if type(self.fmin) is int:
             return str(int)
         
         assert type(self.fmin) is float
         
-        if self.fmax - self.fmin > 10:
-            return str(int(num))
+        pretty_out = ""
+        
+        # handle corner case where we're looking at the maximum number, and need to make sure the filter value is above that
+        if num == self.fmax:
+          if self.fmax - self.fmin > 10:
+            pretty_out = str(math.ceil(num))
+          else:
+            num += 0.01
+            pretty_out = '{0:.2f}'.format(num)          
+        elif self.fmax - self.fmin > 10:
+            pretty_out = str(int(num))
         else:
-            return '{0:.2f}'.format(num)
+            pretty_out = '{0:.2f}'.format(num)
+        
+        #QgsMessageLog.logMessage("Slider Value: %f, Converted num: %s" % (slider_num, pretty_out), 'Range Filter Plugin', level=Qgis.Info)        
+        
+        return pretty_out
+        
     
     def eventFilter(self, source, event):
         # handle right click removal of features to filter
@@ -73,22 +92,23 @@ class RangeSlider(QWidget):
             return True
         return False #super(DataRangeSliders, self).eventFilter(source, event)
 
-    def _getStartEndValues(self):
-        start_slider_val = self.slider.start()
-        start_actual_val = (start_slider_val/100.0) * (self.fmax - self.fmin) + self.fmin
+    def _getStartEndValuesStr(self):
+        return (self.pretty(self.slider.start()), self.pretty(self.slider.end()))
         
-        end_slider_val = self.slider.end()
-        end_actual_val = (end_slider_val/100.0) * (self.fmax - self.fmin) + self.fmin
-        
-        return (start_actual_val, end_actual_val)
-    
     def getRangeFilter(self):
-        (start_actual_val, end_actual_val) = self._getStartEndValues()
+        if self._dirty == False:
+          return ""
         
-        return '"%s" > %f AND "%s" < %f' % (self.field_name, start_actual_val, self.field_name, end_actual_val)
+        (start_actual_val, end_actual_val) = self._getStartEndValuesStr()
+        filter_clause1 = '"%s" >= %s' % (self.field_name, start_actual_val)
+        filter_clause2 = '"%s" <= %s' % (self.field_name, end_actual_val)
+        filter_clause = filter_clause1 + ' AND ' + filter_clause2
+        return filter_clause
 
     def on_value_changed(self):
-        (start_actual_val, end_actual_val) = self._getStartEndValues()
+        if self._dirty == False:
+          QgsMessageLog.logMessage("Switching field %s to dirty" % self.field_name, 'Range Filter Plugin', level=Qgis.Info)        
+          self._dirty = True
         self.parent.on_slider_changed(self)
         
 SLIDER_LIST_CONFIG_NAME = "!!SLIDERS!!"
@@ -117,8 +137,9 @@ class DataLayerRangeFilterWidget(QWidget):
                 self._add_slider(name)
         else:
             for field in db.fields():
+                QgsMessageLog.logMessage("Adding slider for field %s" % field.name(), 'Range Filter Plugin', level=Qgis.Warning)        
                 self._add_slider(field.name())
-
+        QgsMessageLog.logMessage("DONE adding sliders", 'Range Filter Plugin', level=Qgis.Warning)        
         self._save_sliders()
         
     def _save_sliders(self):
@@ -144,7 +165,7 @@ class DataLayerRangeFilterWidget(QWidget):
               #self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % field_name, "1")
         
     def on_slider_changed(self, the_slider):
-        text = " AND ".join(map(RangeSlider.getRangeFilter,  self.sliders))
+        text = " AND ".join([x for x in map(RangeSlider.getRangeFilter,  self.sliders) if x != ""])
         db = self.layer.dataProvider()
         db.setSubsetString(text)
     
