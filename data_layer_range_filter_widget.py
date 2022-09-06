@@ -57,10 +57,10 @@ class RangeSlider(QWidget):
     
     def pretty(self, slider_num):
         num = (float(slider_num)/self.slider.max()) * (self.fmax - self.fmin) + self.fmin
-        if type(self.fmin) is int:
-            return str(int)
         
-        assert type(self.fmin) is float
+        # handle edge case where the max and the min are the same
+        if self.fmax == self.fmin:
+          return str(self.fmax)
         
         pretty_out = ""
         
@@ -142,6 +142,22 @@ class DataLayerRangeFilterWidget(QWidget):
         QgsMessageLog.logMessage("DONE adding sliders", 'Range Filter Plugin', level=Qgis.Warning)        
         self._save_sliders()
         
+        # cleanup handling
+        self.layer.willBeDeleted.connect(self.onLayerRemoved)
+        self.installEventFilter(self)
+    
+    def onLayerRemoved(self):
+      self.layer = None
+    
+    def eventFilter(self, source, event):
+      # TODO: This event is emitted when the legend widget is removed. I am not sure if this is the right way to handle widget removeal
+      # with QGIS. Requires asking around and looking at some examples and docs, which weren't easy to find alas. 
+      if self.layer and event.type() == QtCore.QEvent.DeferredDelete:
+        #QgsMessageLog.logMessage("Event %d" % event.type(), 'Range Filter Plugin', level=Qgis.Warning)        
+        db = self.layer.dataProvider()
+        db.setSubsetString("")
+      return False  
+    
     def _save_sliders(self):
         slider_names = [slider.field_name for slider in self.sliders]
         self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, "###".join(slider_names))
