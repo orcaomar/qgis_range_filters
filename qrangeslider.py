@@ -69,6 +69,8 @@ __all__ = ['QRangeSlider']
 
 HANDLE_BORDER_WIDTH = 2
 
+MARGIN_HANDLE_WIDTH = 5
+
 DEFAULT_CSS = """
 QRangeSlider * {
     border: 0px;
@@ -225,9 +227,13 @@ class Handle(Element):
         if self.main.textPrinter is not None:
             start_text = self.main.textPrinter.pretty(self.main.start())
             end_text = self.main.textPrinter.pretty(self.main.end())
+        
+        # give a little buffer for the text
+        rect = event.rect()
+        rect.adjust(MARGIN_HANDLE_WIDTH, 0, -MARGIN_HANDLE_WIDTH, 0)
            
-        qp.drawText(event.rect(), QtCore.Qt.AlignLeft, start_text)
-        qp.drawText(event.rect(), QtCore.Qt.AlignRight, end_text)
+        qp.drawText(rect, QtCore.Qt.AlignLeft, start_text)
+        qp.drawText(rect, QtCore.Qt.AlignRight, end_text)
 
     def mouseMoveEvent(self, event):
         event.accept()

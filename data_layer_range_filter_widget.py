@@ -57,10 +57,14 @@ class RangeSlider(QWidget):
     
     def pretty(self, slider_num):
         num = (float(slider_num)/self.slider.max()) * (self.fmax - self.fmin) + self.fmin
-        
         # handle edge case where the max and the min are the same
         if self.fmax == self.fmin:
-          return str(self.fmax)
+          # disable slider movement if there's no range
+          self.slider.setEnabled(False)
+          if self.fmax > 10:
+            return str(int(self.fmax))
+          else:
+            return '{0:.2f}'.format(self.fmax)
         
         pretty_out = ""
         
