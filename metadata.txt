@@ -3,17 +3,17 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=Legend Data Filter Sliders
+name=Data Range Filter Legend Widget
 qgisMinimumVersion=3.0
-description=No Description yet
+description=Filter layer elements from the legend, using sliders that cover the range of each numeric field.
 version=0.1
 author=Omar Khan
 email=omar.khan+qgis@gmail.com
 
-about=Provide a brief description of the plugin and its purpose.
+about=Add this legend widget use sliders to quickly visually filter your layer by its numeric fileds.
 
-tracker=http://bugs
-repository=http://repo
+tracker=https://github.com/orcaomar/qgis_range_filters/issues/
+repository=https://github.com/orcaomar/qgis_range_filters
 # End of mandatory metadata
 
 # Recommended items:
@@ -23,9 +23,9 @@ hasProcessingProvider=no
 # changelog=
 
 # Tags are comma separated with spaces allowed
-tags=python
+tags=python, legend, visualization, filter
 
-homepage=http://homepage
+homepage=https://github.com/orcaomar/qgis_range_filters
 category=Plugins
 icon=icon.png
 # experimental flag

@@ -217,6 +217,3 @@ class RangeFilterWidgetProvider(QgsLayerTreeEmbeddedWidgetProvider):
         # TODO: this is necc. but is it sufficient?
         return hasattr(layer.dataProvider(), "fields")
         
-
-#provider = RangeFilterWidgetProvider()
-#QgsGui.layerTreeEmbeddedWidgetRegistry().addProvider(provider)
