@@ -6,7 +6,7 @@
 name=Data Range Filter Legend Widget
 qgisMinimumVersion=3.0
 description=Filter layer elements from the legend, using sliders that cover the range of each numeric field.
-version=0.1
+version=0.2
 author=Omar Khan
 email=omar.khan+qgis@gmail.com
 
