@@ -25,10 +25,11 @@ import numbers
 import math
 
 class RangeSlider(QWidget):
-    def __init__(self, parent, field_name, fmin, fmax, is_date_or_time=False):
+    def __init__(self, parent, field_name, fmin, fmax, is_date_or_time=False, is_numeric=False):
         if not isinstance(fmin, numbers.Number) or not isinstance(fmax, numbers.Number):
           raise ValueError("Min or Max is not a number")
         self.is_date_or_time = is_date_or_time
+        self.is_numeric = is_numeric
         QWidget.__init__(self)
         self.parent = parent
         self.field_name = field_name
@@ -64,7 +65,8 @@ class RangeSlider(QWidget):
           # disable slider movement if there's no range
           self.slider.setEnabled(False)
           if self.is_date_or_time:
-             return QDateTime.fromMSecsSinceEpoch(int(self.fmax * 1000)).toString("yyyy-MM-dd HH:mm:ss")
+             msecs = int(self.fmax) if abs(self.fmax) > 30000000000 else int(self.fmax * 1000)
+             return QDateTime.fromMSecsSinceEpoch(msecs).toString("yyyy-MM-dd HH:mm:ss")
           if self.fmax > 10:
             return str(int(self.fmax))
           else:
@@ -89,8 +91,11 @@ class RangeSlider(QWidget):
             pretty_out = '{0:.2f}'.format(num)
 
         if self.is_date_or_time:
-            dt = QDateTime.fromMSecsSinceEpoch(int(num * 1000))
+            msecs = int(num) if abs(num) > 30000000000 else int(num * 1000)
+            dt = QDateTime.fromMSecsSinceEpoch(msecs)
             diff = self.fmax - self.fmin
+            if abs(self.fmax) > 30000000000 or abs(self.fmin) > 30000000000:
+                diff /= 1000
             if diff < 86400:
                 pretty_out = dt.toString("HH:mm:ss")
             elif diff < 2592000:
@@ -105,8 +110,9 @@ class RangeSlider(QWidget):
     def getQueryValue(self, slider_num):
         num = (float(slider_num)/self.slider.max()) * (self.fmax - self.fmin) + self.fmin
 
-        if self.is_date_or_time:
-            dt = QDateTime.fromMSecsSinceEpoch(int(num * 1000))
+        if self.is_date_or_time and not self.is_numeric:
+            msecs = int(num) if abs(num) > 30000000000 else int(num * 1000)
+            dt = QDateTime.fromMSecsSinceEpoch(msecs)
             return "'" + dt.toString("yyyy-MM-dd HH:mm:ss") + "'"
 
         if self.fmax == self.fmin:
@@ -276,7 +282,7 @@ class DataLayerRangeFilterWidget(QWidget):
                       field_min = _to_timestamp(field_min)
 
               try:
-                slider = RangeSlider(self, field_name, field_min, field_max, is_date_or_time)
+                slider = RangeSlider(self, field_name, field_min, field_max, is_date_or_time, field.isNumeric())
                 self.layout.addWidget(slider)
                 self.sliders.append(slider)
               except ValueError as v:
