@@ -489,7 +489,10 @@ class DataLayerRangeFilterWidget(QWidget):
                 self._add_filter(field.name())
         self._save_sliders()
         self.on_slider_changed(None)
+
+        current_width = self.width()
         self.adjustSize()
+        self.resize(current_width, self.height())
         self.updateGeometry()
 
     def eventFilter(self, source, event):
@@ -635,7 +638,10 @@ class DataLayerRangeFilterWidget(QWidget):
         self._save_sliders()
         slider.deleteLater()
         self.on_slider_changed(None)
+
+        current_width = self.width()
         self.adjustSize()
+        self.resize(current_width, self.height())
         self.updateGeometry()
 
 
