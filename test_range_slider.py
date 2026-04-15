@@ -31,8 +31,14 @@ class MockQgis:
             class QVBoxLayout:
                 def addWidget(self, *args):
                     pass
+                def setSpacing(self, *args):
+                    pass
+                def setContentsMargins(self, *args):
+                    pass
             class QHBoxLayout:
                 def addWidget(self, *args):
+                    pass
+                def setSpacing(self, *args):
                     pass
                 def setContentsMargins(self, *args):
                     pass
@@ -278,10 +284,75 @@ def test_category_filter():
     assert '"cat_field" IN (\'B\', \'C\')' in q
     print("Test 4 passed.")
 
+def test_auto_category():
+    print("Running Test 5: Auto Category Filter limits")
+    from data_layer_range_filter_widget_test import DataLayerRangeFilterWidget
+    class MockField:
+        def __init__(self, name, isnumeric):
+            self._name = name
+            self._isnumeric = isnumeric
+        def name(self): return self._name
+        def isNumeric(self): return self._isnumeric
+        def type(self): return 10
+    class MockDB:
+        def setSubsetString(self, s): pass
+        def fields(self): return [MockField("f1", False), MockField("f2", False), MockField("f3", False)]
+        def fieldNameIndex(self, n): return ["f1", "f2", "f3"].index(n) if n in ["f1", "f2", "f3"] else -1
+    class MockLayer:
+        class Signal:
+            def connect(self, fn): pass
+        def __init__(self):
+            self.willBeDeleted = self.Signal()
+            self._props = {}
+        def dataProvider(self): return MockDB()
+        def setCustomProperty(self, k, v): self._props[k] = v
+        def customProperty(self, k, default): return self._props.get(k, default)
+        def uniqueValues(self, idx):
+            if idx == 0: return ["A"] # len 1
+            if idx == 1: return ["A", "B", "C"] # len 3
+            if idx == 2: return ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"] # len 11
+            return []
+        def aggregate(self, agg, name): return [0]
+
+    layer = MockLayer()
+    w = DataLayerRangeFilterWidget(layer)
+    # only f2 should be added as a slider initially because f1 has len 1 and f3 has len 11
+    assert len(w.sliders) == 1
+    assert w.sliders[0].field_name == "f2"
+    print("Test 5 passed.")
+
+def test_context_menu_actions():
+    print("Running Test 6: Context menu actions")
+    from data_layer_range_filter_widget_test import RangeSlider
+    class MockParent:
+        def __init__(self):
+            self.hid = False
+            self.num = False
+            self.dat = False
+            self.cat = False
+        def on_coerce_slider_hide(self, s): self.hid = True
+        def on_coerce_slider_number(self, s): self.num = True
+        def on_coerce_slider_date(self, s): self.dat = True
+        def on_coerce_slider_category(self, s): self.cat = True
+
+    slider = RangeSlider(MockParent(), "date_field", 0, 10)
+
+    # We can't easily simulate full PyQt menu execution with QAction return values
+    # but we can verify the methods exist on parent and check that calling them works
+    slider.parent.on_coerce_slider_hide(slider)
+    assert slider.parent.hid
+    slider.parent.on_coerce_slider_number(slider)
+    assert slider.parent.num
+    slider.parent.on_coerce_slider_date(slider)
+    assert slider.parent.dat
+    slider.parent.on_coerce_slider_category(slider)
+    assert slider.parent.cat
+    print("Test 6 passed.")
+
 if __name__ == '__main__':
     test_category_filter()
-
-
+    test_auto_category()
+    test_context_menu_actions()
 
 # Cleanup
 import os

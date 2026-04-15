@@ -66,9 +66,26 @@ class CategoryFilterWidget(QWidget):
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.ContextMenu and source is self:
             menu = QMenu()
+            action_hide = menu.addAction('Hide')
+            action_number = menu.addAction('Treat as Number')
+            action_date = menu.addAction('Treat as Date')
+            action_category = menu.addAction('Treat as Category')
+            menu.addSeparator()
             action_options = menu.addAction('Options...')
             selected_action = menu.exec_(event.globalPos())
-            if selected_action == action_options:
+            if selected_action == action_hide:
+                if hasattr(self.parent, 'on_coerce_slider_hide'):
+                    self.parent.on_coerce_slider_hide(self)
+            elif selected_action == action_number:
+                if hasattr(self.parent, 'on_coerce_slider_number'):
+                    self.parent.on_coerce_slider_number(self)
+            elif selected_action == action_date:
+                if hasattr(self.parent, 'on_coerce_slider_date'):
+                    self.parent.on_coerce_slider_date(self)
+            elif selected_action == action_category:
+                if hasattr(self.parent, 'on_coerce_slider_category'):
+                    self.parent.on_coerce_slider_category(self)
+            elif selected_action == action_options:
                 if hasattr(self.parent, 'on_options_menu'):
                     self.parent.on_options_menu()
             return True
@@ -357,10 +374,27 @@ class RangeSlider(QWidget):
         if (event.type() == QtCore.QEvent.ContextMenu and
             source is self):
             menu = QMenu()
+            action_hide = menu.addAction('Hide')
+            action_number = menu.addAction('Treat as Number')
+            action_date = menu.addAction('Treat as Date')
+            action_category = menu.addAction('Treat as Category')
+            menu.addSeparator()
             action_options = menu.addAction('Options...')
 
             selected_action = menu.exec_(event.globalPos())
-            if selected_action == action_options:
+            if selected_action == action_hide:
+                if hasattr(self.parent, 'on_coerce_slider_hide'):
+                    self.parent.on_coerce_slider_hide(self)
+            elif selected_action == action_number:
+                if hasattr(self.parent, 'on_coerce_slider_number'):
+                    self.parent.on_coerce_slider_number(self)
+            elif selected_action == action_date:
+                if hasattr(self.parent, 'on_coerce_slider_date'):
+                    self.parent.on_coerce_slider_date(self)
+            elif selected_action == action_category:
+                if hasattr(self.parent, 'on_coerce_slider_category'):
+                    self.parent.on_coerce_slider_category(self)
+            elif selected_action == action_options:
                 if hasattr(self.parent, 'on_options_menu'):
                     self.parent.on_options_menu()
 
@@ -394,6 +428,8 @@ class DataLayerRangeFilterWidget(QWidget):
         #QgsMessageLog.logMessage("Widget Loaded", 'Range Filter Plugin', level=Qgis.Info)
 
         layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         self.layer = layer
         self.sliders = []
@@ -495,10 +531,10 @@ class DataLayerRangeFilterWidget(QWidget):
               else:
                   # Check unique values count for auto-category
                   unique_values = self.layer.uniqueValues(i)
-                  if len(unique_values) < 10:
+                  if 1 < len(unique_values) < 10:
                       is_category = True
                   else:
-                      # If >= 10, don't show it by default
+                      # If >= 10 or <= 1, don't show it by default
                       return
 
           if is_category:
@@ -566,6 +602,22 @@ class DataLayerRangeFilterWidget(QWidget):
     def on_coerce_slider(self, slider):
         val = "DATE" if slider.is_date_or_time else "NUMBER"
         self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + slider.field_name), val)
+
+    def on_coerce_slider_hide(self, slider):
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + slider.field_name), "HIDDEN")
+        self.on_options_closed()
+
+    def on_coerce_slider_number(self, slider):
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + slider.field_name), "NUMBER")
+        self.on_options_closed()
+
+    def on_coerce_slider_date(self, slider):
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + slider.field_name), "DATE")
+        self.on_options_closed()
+
+    def on_coerce_slider_category(self, slider):
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + slider.field_name), "CATEGORY")
+        self.on_options_closed()
 
     def on_remove_slider(self, slider):
         self.sliders.remove(slider)
