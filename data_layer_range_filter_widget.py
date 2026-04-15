@@ -14,6 +14,7 @@
 WIDGET_SETTING_PREFIX = "legend_data_filter_%s"
 
 from qgis.PyQt.QtWidgets import *
+from qgis.PyQt.QtWidgets import QListWidget, QListWidgetItem, QDialog, QComboBox, QTableWidget, QTableWidgetItem, QDialogButtonBox, QMessageBox
 from qgis.PyQt import QtCore
 from qgis.core import QgsMessageLog, QgsAggregateCalculator, Qgis
 from qgis.core import QgsMapLayer, QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
@@ -24,8 +25,225 @@ from .qrangeslider import QRangeSlider
 import numbers
 import math
 
+
+class CategoryFilterWidget(QWidget):
+    def __init__(self, parent, field_name, unique_values, is_spacious=False):
+        QWidget.__init__(self)
+        self.parent = parent
+        self.field_name = field_name
+        self._dirty = False
+        self.is_spacious = is_spacious
+
+        layout = QVBoxLayout() if is_spacious else QHBoxLayout()
+        self.setLayout(layout)
+
+        label = QLabel(field_name)
+        label.setToolTip(field_name)
+        label.setFixedWidth(120 if is_spacious else 60)
+
+        self.list_widget = QListWidget()
+        if not is_spacious:
+            self.list_widget.setFixedHeight(40)
+        else:
+            self.list_widget.setFixedHeight(80)
+
+        for val in unique_values:
+            val_str = str(val) if val is not None else "NULL"
+            item = QListWidgetItem(val_str)
+            item.setData(QtCore.Qt.UserRole, val)
+            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+            item.setCheckState(QtCore.Qt.Checked)
+            self.list_widget.addItem(item)
+
+        self.list_widget.itemChanged.connect(self.on_value_changed)
+
+        layout.addWidget(label)
+        layout.addWidget(self.list_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.installEventFilter(self)
+
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.ContextMenu and source is self:
+            menu = QMenu()
+            action_options = menu.addAction('Options...')
+            selected_action = menu.exec_(event.globalPos())
+            if selected_action == action_options:
+                if hasattr(self.parent, 'on_options_menu'):
+                    self.parent.on_options_menu()
+            return True
+        return False
+
+    def getRangeFilter(self):
+        if not self._dirty:
+            return ""
+
+        checked_values = []
+        all_checked = True
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item.checkState() == QtCore.Qt.Checked:
+                checked_values.append(item.data(QtCore.Qt.UserRole))
+            else:
+                all_checked = False
+
+        if all_checked:
+            return ""
+        if not checked_values:
+            return "1 = 0"
+
+        formatted_values = []
+        has_null = False
+        for v in checked_values:
+            if v is None:
+                has_null = True
+            elif isinstance(v, (int, float)):
+                formatted_values.append(str(v))
+            else:
+                formatted_values.append("'" + str(v).replace("'", "''") + "'")
+
+        conditions = []
+        if formatted_values:
+            in_clause = ", ".join(formatted_values)
+            conditions.append(f'"{self.field_name}" IN ({in_clause})')
+        if has_null:
+            conditions.append(f'"{self.field_name}" IS NULL')
+
+        if not conditions:
+            return "1 = 0"
+        return " OR ".join(conditions)
+
+    def on_value_changed(self, item=None):
+        if not self._dirty:
+            QgsMessageLog.logMessage("Switching category field %s to dirty" % self.field_name, 'Range Filter Plugin', level=Qgis.Info)
+            self._dirty = True
+        self.parent.on_slider_changed(self)
+
+
+
+class OptionsDialog(QDialog):
+    def __init__(self, layer, parent=None):
+        super(OptionsDialog, self).__init__(parent)
+        self.layer = layer
+        self.setWindowTitle("Options...")
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(300)
+
+        self.layout = QVBoxLayout(self)
+
+        # UI Mode toggle
+        self.mode_layout = QHBoxLayout()
+        self.mode_label = QLabel("UI Mode:")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Classic", "Spacious"])
+        current_mode = self.layer.customProperty(WIDGET_SETTING_PREFIX % "UI_MODE", "Classic")
+        self.mode_combo.setCurrentText(current_mode)
+        self.mode_layout.addWidget(self.mode_label)
+        self.mode_layout.addWidget(self.mode_combo)
+        self.layout.addLayout(self.mode_layout)
+
+        # Fields Table
+        self.table = QTableWidget()
+        db = self.layer.dataProvider()
+        fields = db.fields()
+        self.table.setColumnCount(2)
+        self.table.setRowCount(len(fields))
+        self.table.setHorizontalHeaderLabels(["Field", "Data Type"])
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        self.field_combos = {}
+
+        for i, field in enumerate(fields):
+            field_name = field.name()
+            item = QTableWidgetItem(field_name)
+            item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
+            self.table.setItem(i, 0, item)
+
+            combo = QComboBox()
+            combo.addItems(["Hidden/Ignore", "Number", "Date", "Category"])
+
+            # Read existing coercion property or determine default
+            coerced_setting = self.layer.customProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), None)
+
+            if coerced_setting:
+                if coerced_setting == "HIDDEN":
+                    combo.setCurrentText("Hidden/Ignore")
+                elif coerced_setting == "NUMBER":
+                    combo.setCurrentText("Number")
+                elif coerced_setting == "DATE":
+                    combo.setCurrentText("Date")
+                elif coerced_setting == "CATEGORY":
+                    combo.setCurrentText("Category")
+            else:
+                # Default Logic
+                if field.isNumeric():
+                    combo.setCurrentText("Number")
+                elif (hasattr(field, 'isDateOrTime') and field.isDateOrTime()) or field.type() in [QtCore.QVariant.Date, QtCore.QVariant.DateTime]:
+                    combo.setCurrentText("Date")
+                else:
+                    # Default string etc to Category, we will show warning later if too many
+                    combo.setCurrentText("Category")
+
+            # Connect combo change event to check category size
+            combo.currentTextChanged.connect(lambda text, fname=field_name, c=combo: self.check_category_size(text, fname, c))
+
+            self.table.setCellWidget(i, 1, combo)
+            self.field_combos[field_name] = combo
+
+        self.layout.addWidget(self.table)
+
+        # Dialog Buttons
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        self.layout.addWidget(self.buttonBox)
+
+    def check_category_size(self, text, field_name, combo):
+        if text == "Category":
+            try:
+                # Try to get unique values count
+                # Note: For large layers this could be slow, but it's requested functionality
+                idx = self.layer.dataProvider().fieldNameIndex(field_name)
+                unique_values = self.layer.uniqueValues(idx)
+                if len(unique_values) > 10:
+                    reply = QMessageBox.warning(self, "Warning", f"Are you sure? There are {len(unique_values)} distinct items!",
+                                                QMessageBox.Yes | QMessageBox.No)
+                    if reply == QMessageBox.No:
+                        # Reset to previous or Hidden
+                        combo.blockSignals(True)
+                        combo.setCurrentText("Hidden/Ignore")
+                        combo.blockSignals(False)
+            except Exception as e:
+                pass
+
+    def accept(self):
+        # Save mode
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % "UI_MODE", self.mode_combo.currentText())
+
+        # Save fields
+        sliders = []
+        for field_name, combo in self.field_combos.items():
+            val = combo.currentText()
+            if val == "Hidden/Ignore":
+                self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), "HIDDEN")
+            elif val == "Number":
+                self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), "NUMBER")
+                sliders.append(field_name)
+            elif val == "Date":
+                self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), "DATE")
+                sliders.append(field_name)
+            elif val == "Category":
+                self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), "CATEGORY")
+                sliders.append(field_name)
+
+        self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, "###".join(sliders))
+        super(OptionsDialog, self).accept()
+        if hasattr(self.parent(), 'on_options_closed'):
+            self.parent().on_options_closed()
+
+
 class RangeSlider(QWidget):
-    def __init__(self, parent, field_name, fmin, fmax, is_date_or_time=False, is_numeric=False):
+    def __init__(self, parent, field_name, fmin, fmax, is_date_or_time=False, is_numeric=False, is_spacious=False):
         if not isinstance(fmin, numbers.Number) or not isinstance(fmax, numbers.Number):
           raise ValueError("Min or Max is not a number")
         self.is_date_or_time = is_date_or_time
@@ -38,7 +256,7 @@ class RangeSlider(QWidget):
         self._dirty = False
         self.slider = QRangeSlider()
         self.slider.setDrawValues(True, self)
-        self.slider.setFixedHeight(16)
+        self.slider.setFixedHeight(24 if is_spacious else 16)
         self.slider.startValueChanged.connect(self.on_value_changed)
         self.slider.endValueChanged.connect(self.on_value_changed)
 
@@ -47,13 +265,17 @@ class RangeSlider(QWidget):
 
         #self.on_value_changed()
 
-        layout = QHBoxLayout()
+        layout = QVBoxLayout() if is_spacious else QHBoxLayout()
         label = QLabel(field_name)
         label.setToolTip(field_name)
-        label.setFixedWidth(60)
+        label.setFixedWidth(120 if is_spacious else 60)
         layout.addWidget(label)
         layout.addWidget(self.slider)
-        layout.setContentsMargins(0, 0, 0, 0)
+
+        if is_spacious:
+            layout.setContentsMargins(0, 5, 0, 10)
+        else:
+            layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
         self.installEventFilter(self)
@@ -135,21 +357,12 @@ class RangeSlider(QWidget):
         if (event.type() == QtCore.QEvent.ContextMenu and
             source is self):
             menu = QMenu()
-
-            coerce_action_text = 'Treat as Number' if self.is_date_or_time else 'Treat as Date/Time'
-            action_coerce = menu.addAction(coerce_action_text)
-            action_remove = menu.addAction('Remove %s' % self.field_name)
+            action_options = menu.addAction('Options...')
 
             selected_action = menu.exec_(event.globalPos())
-            if selected_action == action_remove:
-                item = source.parent.on_remove_slider(self)
-            elif selected_action == action_coerce:
-                self.is_date_or_time = not self.is_date_or_time
-                self.slider.update()
-                self.slider.repaint()
-                # store settings
-                source.parent.on_coerce_slider(self)
-                self.on_value_changed() # re-trigger filter query with new formatting
+            if selected_action == action_options:
+                if hasattr(self.parent, 'on_options_menu'):
+                    self.parent.on_options_menu()
 
             return True
         return False #super(DataRangeSliders, self).eventFilter(source, event)
@@ -196,11 +409,11 @@ class DataLayerRangeFilterWidget(QWidget):
         if slider_names is not None:
             slider_names = slider_names.split("###")
             for name in slider_names:
-                self._add_slider(name)
+                self._add_filter(name)
         else:
             for field in db.fields():
                 QgsMessageLog.logMessage("Adding slider for field %s" % field.name(), 'Range Filter Plugin', level=Qgis.Warning)
-                self._add_slider(field.name())
+                self._add_filter(field.name())
         QgsMessageLog.logMessage("DONE adding sliders", 'Range Filter Plugin', level=Qgis.Warning)
         self._save_sliders()
 
@@ -210,6 +423,30 @@ class DataLayerRangeFilterWidget(QWidget):
 
     def onLayerRemoved(self):
       self.layer = None
+
+    def on_options_menu(self):
+        dialog = OptionsDialog(self.layer, self)
+        dialog.exec_()
+
+    def on_options_closed(self):
+        # Clear existing layout and sliders
+        for slider in self.sliders:
+            self.layout.removeWidget(slider)
+            slider.setParent(None)
+        self.sliders = []
+
+        # Reload
+        slider_names = self.layer.customProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, None)
+        if slider_names is not None:
+            slider_names = slider_names.split("###")
+            for name in slider_names:
+                self._add_filter(name)
+        else:
+            db = self.layer.dataProvider()
+            for field in db.fields():
+                self._add_filter(field.name())
+        self._save_sliders()
+        self.on_slider_changed(None)
 
     def eventFilter(self, source, event):
       # TODO: This event is emitted when the legend widget is removed. I am not sure if this is the right way to handle widget removeal
@@ -224,25 +461,57 @@ class DataLayerRangeFilterWidget(QWidget):
         slider_names = [slider.field_name for slider in self.sliders]
         self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, "###".join(slider_names))
 
-    def _add_slider(self, field_name):
+    def _add_filter(self, field_name):
         db = self.layer.dataProvider()
         i = db.fieldNameIndex(field_name)
         if i != -1:
           field = db.fields()[i]
-          if field.isNumeric() or (hasattr(field, 'isDateOrTime') and field.isDateOrTime()) or field.type() in [QtCore.QVariant.Date, QtCore.QVariant.DateTime]:
-              field_max = self.layer.aggregate(QgsAggregateCalculator.Max, field.name())[0]
-              field_min = self.layer.aggregate(QgsAggregateCalculator.Min, field.name())[0]
 
-              is_date_or_time = False
-              # retrieve coercion setting if exists
-              coerced_setting = self.layer.customProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), None)
+          # retrieve coercion setting if exists
+          coerced_setting = self.layer.customProperty(WIDGET_SETTING_PREFIX % ("COERCE_" + field_name), None)
 
-              if coerced_setting == "DATE":
-                  is_date_or_time = True
-              elif coerced_setting == "NUMBER":
-                  is_date_or_time = False
+          if coerced_setting == "HIDDEN":
+              return
+
+          ui_mode = self.layer.customProperty(WIDGET_SETTING_PREFIX % "UI_MODE", "Classic")
+          is_spacious = (ui_mode == "Spacious")
+
+          is_date_or_time = False
+          is_numeric = False
+          is_category = False
+
+          if coerced_setting == "DATE":
+              is_date_or_time = True
+          elif coerced_setting == "NUMBER":
+              is_numeric = True
+          elif coerced_setting == "CATEGORY":
+              is_category = True
+          else:
+              # Auto-detection
+              if field.isNumeric():
+                  is_numeric = True
               elif (hasattr(field, 'isDateOrTime') and field.isDateOrTime()) or field.type() in [QtCore.QVariant.Date, QtCore.QVariant.DateTime]:
                   is_date_or_time = True
+              else:
+                  # Check unique values count for auto-category
+                  unique_values = self.layer.uniqueValues(i)
+                  if len(unique_values) < 10:
+                      is_category = True
+                  else:
+                      # If >= 10, don't show it by default
+                      return
+
+          if is_category:
+              unique_values = self.layer.uniqueValues(i)
+              try:
+                  widget = CategoryFilterWidget(self, field_name, unique_values, is_spacious=is_spacious)
+                  self.layout.addWidget(widget)
+                  self.sliders.append(widget) # re-use sliders array for generic widgets
+              except Exception as e:
+                  QgsMessageLog.logMessage("Error for category fieldname %s: %s" % (field_name, str(e)), 'Range Filter Plugin', level=Qgis.Warning)
+          else:
+              field_max = self.layer.aggregate(QgsAggregateCalculator.Max, field.name())[0]
+              field_min = self.layer.aggregate(QgsAggregateCalculator.Min, field.name())[0]
 
               if is_date_or_time:
                   # convert to timestamp (epoch seconds) for slider
@@ -250,8 +519,8 @@ class DataLayerRangeFilterWidget(QWidget):
                   def _to_timestamp(val):
                       if hasattr(val, 'toMSecsSinceEpoch'):
                           return val.toMSecsSinceEpoch() / 1000.0
-                      elif type(val) is QDate:
-                          return QDateTime(val).toMSecsSinceEpoch() / 1000.0
+                      elif type(val) is QtCore.QDate:
+                          return QtCore.QDateTime(val).toMSecsSinceEpoch() / 1000.0
                       elif hasattr(val, 'toPython'):
                           return val.toPython().timestamp()
                       elif type(val) is datetime.date:
@@ -282,16 +551,15 @@ class DataLayerRangeFilterWidget(QWidget):
                       field_min = _to_timestamp(field_min)
 
               try:
-                slider = RangeSlider(self, field_name, field_min, field_max, is_date_or_time, field.isNumeric())
+                # Add spacing option to RangeSlider if needed? Will do in next step.
+                slider = RangeSlider(self, field_name, field_min, field_max, is_date_or_time, field.isNumeric(), is_spacious=is_spacious)
                 self.layout.addWidget(slider)
                 self.sliders.append(slider)
               except ValueError as v:
                 QgsMessageLog.logMessage("Error for fieldname %s: %s" % (field_name, str(v)), 'Range Filter Plugin', level=Qgis.Warning)
 
-              #self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % field_name, "1")
-
     def on_slider_changed(self, the_slider):
-        text = " AND ".join([x for x in map(RangeSlider.getRangeFilter,  self.sliders) if x != ""])
+        text = " AND ".join([w.getRangeFilter() for w in self.sliders if w.getRangeFilter() != ""])
         db = self.layer.dataProvider()
         db.setSubsetString(text)
 

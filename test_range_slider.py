@@ -41,8 +41,104 @@ class MockQgis:
                     super().__init__()
             class QMenu(QWidget):
                 pass
+
+            class QListWidget(QWidget):
+                def __init__(self):
+                    super().__init__()
+                    self._items = []
+                    class ItemChangedSignal:
+                        def connect(self, fn):
+                            pass
+                    self.itemChanged = ItemChangedSignal()
+                def setFixedHeight(self, *args):
+                    pass
+                def addItem(self, item):
+                    self._items.append(item)
+                def count(self):
+                    return len(self._items)
+                def item(self, i):
+                    return self._items[i]
+            class QListWidgetItem:
+                def __init__(self, text=""):
+                    self.text = text
+                    self._data = None
+                    self._flags = 0
+                    self._state = 2 # Checked
+                def setData(self, role, val):
+                    self._data = val
+                def data(self, role):
+                    return self._data
+                def flags(self):
+                    return self._flags
+                def setFlags(self, flags):
+                    self._flags = flags
+                def setCheckState(self, state):
+                    self._state = state
+                def checkState(self):
+                    return self._state
+            class QDialog(QWidget):
+                def setWindowTitle(self, *args): pass
+                def setMinimumWidth(self, *args): pass
+                def setMinimumHeight(self, *args): pass
+            class QComboBox(QWidget):
+                def __init__(self):
+                    super().__init__()
+                    class Signal:
+                        def connect(self, fn): pass
+                        def disconnect(self, fn): pass
+                    self.currentTextChanged = Signal()
+                    self._text = ""
+                def addItems(self, *args): pass
+                def setCurrentText(self, text): self._text = text
+                def currentText(self): return self._text
+                def blockSignals(self, b): pass
+            class QTableWidget(QWidget):
+                def setColumnCount(self, *args): pass
+                def setRowCount(self, *args): pass
+                def setHorizontalHeaderLabels(self, *args): pass
+                def horizontalHeader(self):
+                    class H:
+                        def setStretchLastSection(self, *args): pass
+                    return H()
+                def setItem(self, *args): pass
+                def setCellWidget(self, *args): pass
+            class QTableWidgetItem:
+                def __init__(self, text=""): pass
+                def flags(self): return 0
+                def setFlags(self, *args): pass
+            class QDialogButtonBox(QWidget):
+                Ok = 1
+                Cancel = 2
+                def __init__(self, *args):
+                    super().__init__()
+                    class Sig:
+                        def connect(self, fn): pass
+                    self.accepted = Sig()
+                    self.rejected = Sig()
+            class QMessageBox:
+                Yes = 1
+                No = 2
+                Warning = 3
+                @staticmethod
+                def warning(*args): return 2
+
+            # Needed for CategoryFilterWidget check state
+
+
+
+
+
+
         class QtCore:
+
+            class Qt:
+                UserRole = 32
+                ItemIsUserCheckable = 16
+                Checked = 2
+                Unchecked = 0
+                ItemIsEditable = 2
             class QEvent:
+
                 ContextMenu = 1
                 DeferredDelete = 2
             class QDate:
@@ -139,9 +235,7 @@ if __name__ == '__main__':
     test_date_range()
     test_time_range()
 
-    # Cleanup
-    if os.path.exists("data_layer_range_filter_widget_test.py"):
-        os.remove("data_layer_range_filter_widget_test.py")
+
 
 def test_coerce():
     print("Running Test 3: Type Coercion Menu")
@@ -162,3 +256,34 @@ def test_coerce():
 
 if __name__ == '__main__':
     test_coerce()
+
+def test_category_filter():
+    print("Running Test 4: Category Filter")
+    from data_layer_range_filter_widget_test import CategoryFilterWidget
+    class MockParent:
+        def on_slider_changed(self, w):
+            pass
+
+    cw = CategoryFilterWidget(MockParent(), "cat_field", ["A", "B", "C"])
+    assert cw.list_widget.count() == 3
+
+    # By default all checked
+    assert cw.getRangeFilter() == ""
+
+    # Uncheck one
+    cw.list_widget.item(0).setCheckState(0) # Unchecked
+    cw._dirty = True
+
+    q = cw.getRangeFilter()
+    assert '"cat_field" IN (\'B\', \'C\')' in q
+    print("Test 4 passed.")
+
+if __name__ == '__main__':
+    test_category_filter()
+
+
+
+# Cleanup
+import os
+if os.path.exists("data_layer_range_filter_widget_test.py"):
+    os.remove("data_layer_range_filter_widget_test.py")
