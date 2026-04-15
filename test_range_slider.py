@@ -22,6 +22,10 @@ class MockQgis:
                     pass
                 def installEventFilter(self, *args):
                     pass
+                def show(self):
+                    pass
+                def deleteLater(self):
+                    pass
                 def setToolTip(self, *args):
                     pass
                 def setFixedWidth(self, *args):
