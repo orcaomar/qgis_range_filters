@@ -170,6 +170,9 @@ class OptionsDialog(QDialog):
 
         self.field_combos = {}
 
+        slider_names = self.layer.customProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, None)
+        active_sliders = set(slider_names.split("###")) if slider_names is not None else None
+
         for i, field in enumerate(fields):
             field_name = field.name()
             item = QTableWidgetItem(field_name)
@@ -192,14 +195,17 @@ class OptionsDialog(QDialog):
                 elif coerced_setting == "CATEGORY":
                     combo.setCurrentText("Category")
             else:
-                # Default Logic
-                if field.isNumeric():
-                    combo.setCurrentText("Number")
-                elif (hasattr(field, 'isDateOrTime') and field.isDateOrTime()) or field.type() in [QtCore.QVariant.Date, QtCore.QVariant.DateTime]:
-                    combo.setCurrentText("Date")
+                if active_sliders is not None and field_name not in active_sliders:
+                    combo.setCurrentText("Hidden/Ignore")
                 else:
-                    # Default string etc to Category, we will show warning later if too many
-                    combo.setCurrentText("Category")
+                    # Default Logic
+                    if field.isNumeric():
+                        combo.setCurrentText("Number")
+                    elif (hasattr(field, 'isDateOrTime') and field.isDateOrTime()) or field.type() in [QtCore.QVariant.Date, QtCore.QVariant.DateTime]:
+                        combo.setCurrentText("Date")
+                    else:
+                        # Default string etc to Category, we will show warning later if too many
+                        combo.setCurrentText("Category")
 
             # Connect combo change event to check category size
             combo.currentTextChanged.connect(lambda text, fname=field_name, c=combo: self.check_category_size(text, fname, c))
@@ -468,7 +474,7 @@ class DataLayerRangeFilterWidget(QWidget):
         # Clear existing layout and sliders
         for slider in self.sliders:
             self.layout.removeWidget(slider)
-            slider.setParent(None)
+            slider.deleteLater()
         self.sliders = []
 
         # Reload
@@ -542,6 +548,7 @@ class DataLayerRangeFilterWidget(QWidget):
               try:
                   widget = CategoryFilterWidget(self, field_name, unique_values, is_spacious=is_spacious)
                   self.layout.addWidget(widget)
+                  widget.show()
                   self.sliders.append(widget) # re-use sliders array for generic widgets
               except Exception as e:
                   QgsMessageLog.logMessage("Error for category fieldname %s: %s" % (field_name, str(e)), 'Range Filter Plugin', level=Qgis.Warning)
@@ -590,6 +597,7 @@ class DataLayerRangeFilterWidget(QWidget):
                 # Add spacing option to RangeSlider if needed? Will do in next step.
                 slider = RangeSlider(self, field_name, field_min, field_max, is_date_or_time, field.isNumeric(), is_spacious=is_spacious)
                 self.layout.addWidget(slider)
+                slider.show()
                 self.sliders.append(slider)
               except ValueError as v:
                 QgsMessageLog.logMessage("Error for fieldname %s: %s" % (field_name, str(v)), 'Range Filter Plugin', level=Qgis.Warning)
@@ -623,7 +631,7 @@ class DataLayerRangeFilterWidget(QWidget):
         self.sliders.remove(slider)
         self.layout.removeWidget(slider)
         self._save_sliders()
-        slider.setParent(None)
+        slider.deleteLater()
         # TODO: this doesn't cause the container for the widget to resize, which is what I was hoping for
         #self.parent().resize(self.parent().width(), self.parent().height() - 50)
         self.on_slider_changed(None)
