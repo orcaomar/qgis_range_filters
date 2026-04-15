@@ -489,6 +489,8 @@ class DataLayerRangeFilterWidget(QWidget):
                 self._add_filter(field.name())
         self._save_sliders()
         self.on_slider_changed(None)
+        self.adjustSize()
+        self.updateGeometry()
 
     def eventFilter(self, source, event):
       # TODO: This event is emitted when the legend widget is removed. I am not sure if this is the right way to handle widget removeal
@@ -632,9 +634,9 @@ class DataLayerRangeFilterWidget(QWidget):
         self.layout.removeWidget(slider)
         self._save_sliders()
         slider.deleteLater()
-        # TODO: this doesn't cause the container for the widget to resize, which is what I was hoping for
-        #self.parent().resize(self.parent().width(), self.parent().height() - 50)
         self.on_slider_changed(None)
+        self.adjustSize()
+        self.updateGeometry()
 
 
 class RangeFilterWidgetProvider(QgsLayerTreeEmbeddedWidgetProvider):
