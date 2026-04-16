@@ -477,12 +477,8 @@ class DataLayerRangeFilterWidget(QWidget):
                 dialog = OptionsDialog(self.layer, self, default_hidden=True)
                 dialog.exec_()
                 # If they hit cancel, the config is unpopulated, which is fine
-
-                # Check what was saved (if accepted)
-                saved_sliders = self.layer.customProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, None)
-                if saved_sliders:
-                    for name in saved_sliders.split("###"):
-                        self._add_filter(name)
+                # If they hit ok, OptionsDialog.accept() saves sliders and calls self.on_options_closed(),
+                # which adds the sliders to the layout, so we don't need to do anything here.
             else:
                 # Auto pick
                 for field in db.fields():
