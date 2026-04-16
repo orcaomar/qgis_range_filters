@@ -139,7 +139,7 @@ class CategoryFilterWidget(QWidget):
 
 
 class OptionsDialog(QDialog):
-    def __init__(self, layer, parent=None):
+    def __init__(self, layer, parent=None, default_hidden=False):
         super(OptionsDialog, self).__init__(parent)
         self.layer = layer
         self.setWindowTitle("Options...")
@@ -196,6 +196,8 @@ class OptionsDialog(QDialog):
                     combo.setCurrentText("Category")
             else:
                 if active_sliders is not None and field_name not in active_sliders:
+                    combo.setCurrentText("Hidden/Ignore")
+                elif default_hidden:
                     combo.setCurrentText("Hidden/Ignore")
                 else:
                     # Default Logic
@@ -448,14 +450,45 @@ class DataLayerRangeFilterWidget(QWidget):
         db.setSubsetString("")
 
         slider_names = self.layer.customProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, None)
+        schema_version = self.layer.customProperty(WIDGET_SETTING_PREFIX % "SCHEMA_VERSION", None)
+
         if slider_names is not None:
+            if schema_version is None:
+                # Old version: force classic UI to prevent layout breakage
+                self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % "UI_MODE", "Classic")
+                self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % "SCHEMA_VERSION", "2")
+
             slider_names = slider_names.split("###")
             for name in slider_names:
                 self._add_filter(name)
         else:
-            for field in db.fields():
-                QgsMessageLog.logMessage("Adding slider for field %s" % field.name(), 'Range Filter Plugin', level=Qgis.Warning)
-                self._add_filter(field.name())
+            # First time user is setting up this layer
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle("Setup Range Filters")
+            msg_box.setText("Do you want to select which fields to filter manually, or let the plugin auto-pick the best fields?")
+            btn_select = msg_box.addButton("Select Fields", QMessageBox.ActionRole)
+            btn_auto = msg_box.addButton("Auto-Pick", QMessageBox.ActionRole)
+            msg_box.exec_()
+
+            self.layer.setCustomProperty(WIDGET_SETTING_PREFIX % "SCHEMA_VERSION", "2")
+
+            if msg_box.clickedButton() == btn_select:
+                # Let user configure manually
+                dialog = OptionsDialog(self.layer, self, default_hidden=True)
+                dialog.exec_()
+                # If they hit cancel, the config is unpopulated, which is fine
+
+                # Check what was saved (if accepted)
+                saved_sliders = self.layer.customProperty(WIDGET_SETTING_PREFIX % SLIDER_LIST_CONFIG_NAME, None)
+                if saved_sliders:
+                    for name in saved_sliders.split("###"):
+                        self._add_filter(name)
+            else:
+                # Auto pick
+                for field in db.fields():
+                    QgsMessageLog.logMessage("Adding slider for field %s" % field.name(), 'Range Filter Plugin', level=Qgis.Warning)
+                    self._add_filter(field.name())
+
         QgsMessageLog.logMessage("DONE adding sliders", 'Range Filter Plugin', level=Qgis.Warning)
         self._save_sliders()
 
