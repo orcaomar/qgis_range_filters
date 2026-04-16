@@ -129,6 +129,28 @@ class MockQgis:
                 Yes = 1
                 No = 2
                 Warning = 3
+                ActionRole = 4
+
+                def __init__(self, *args, **kwargs):
+                    self.clicked_btn = None
+
+                def setWindowTitle(self, title):
+                    pass
+
+                def setText(self, text):
+                    pass
+
+                def addButton(self, text, role):
+                    return text
+
+                def exec_(self):
+                    # Mock clicking "Auto-Pick" for tests
+                    self.clicked_btn = "Auto-Pick"
+                    return 0
+
+                def clickedButton(self):
+                    return self.clicked_btn
+
                 @staticmethod
                 def warning(*args): return 2
 
