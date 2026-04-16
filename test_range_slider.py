@@ -375,10 +375,90 @@ def test_context_menu_actions():
     assert slider.parent.cat
     print("Test 6 passed.")
 
+def test_select_fields_duplication():
+    print("Running Test 7: Select Fields Duplication")
+    class MockField:
+        def __init__(self, name, isnumeric):
+            self._name = name
+            self._isnumeric = isnumeric
+        def name(self): return self._name
+        def isNumeric(self): return self._isnumeric
+        def type(self): return 10
+
+    class MockDB:
+        def setSubsetString(self, s): pass
+        def fields(self):
+            return [MockField("f1", True), MockField("f2", True), MockField("f3", True)]
+        def fieldNameIndex(self, n):
+            return ["f1", "f2", "f3"].index(n) if n in ["f1", "f2", "f3"] else -1
+
+    class MockLayer:
+        class Signal:
+            def connect(self, fn): pass
+        def __init__(self):
+            self.willBeDeleted = self.Signal()
+            self._props = {}
+        def dataProvider(self): return MockDB()
+        def setCustomProperty(self, k, v): self._props[k] = v
+        def customProperty(self, k, default): return self._props.get(k, default)
+        def uniqueValues(self, idx): return ["A", "B"]
+        def aggregate(self, agg, name): return [0]
+
+    layer = MockLayer()
+
+    # We will simulate the behavior manually to avoid complete widget mocking issues.
+    # The actual bug was that OptionsDialog acceptance correctly triggered on_options_closed,
+    # and then the initial `__init__` code mistakenly triggered another population of sliders.
+
+    # So we want to make sure DataLayerRangeFilterWidget.__init__ doesn't add sliders itself after OptionsDialog accept
+    from data_layer_range_filter_widget_test import DataLayerRangeFilterWidget, OptionsDialog
+
+    # Mocking OptionsDialog init to not cause issues
+    original_init = OptionsDialog.__init__
+    original_exec = getattr(OptionsDialog, 'exec_', None)
+
+    def mock_init(self, layer, parent, default_hidden=False):
+        self.layer = layer
+        self._parent = parent
+
+    def mock_exec(self):
+        # simulate accept logic setting custom properties
+        self.layer.setCustomProperty("legend_data_filter_!!SLIDERS!!", "f1###f2###f3")
+        # and calling parent.on_options_closed()
+        if hasattr(self._parent, 'on_options_closed'):
+            self._parent.on_options_closed()
+        return 1
+
+    OptionsDialog.__init__ = mock_init
+    OptionsDialog.exec_ = mock_exec
+
+    # mock msgbox to click 'Select Fields'
+    MockQgis.PyQt.QtWidgets.QMessageBox.clicked_btn = "Select Fields"
+
+    try:
+        w = DataLayerRangeFilterWidget(layer)
+
+        # Check how many sliders were added
+        if len(w.sliders) > 3:
+            raise AssertionError("FAIL: Sliders were duplicated!")
+
+        assert len(w.sliders) == 3, f"Expected 3 sliders, got {len(w.sliders)}"
+    finally:
+        # restore mocks just in case
+        OptionsDialog.__init__ = original_init
+        if original_exec:
+            OptionsDialog.exec_ = original_exec
+        else:
+            delattr(OptionsDialog, 'exec_')
+
+    print("Test 7 passed.")
+
+
 if __name__ == '__main__':
     test_category_filter()
     test_auto_category()
     test_context_menu_actions()
+    test_select_fields_duplication()
 
 # Cleanup
 import os
